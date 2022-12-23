@@ -43,9 +43,9 @@ def get(type,id=None,recursion=0):
 		params['labels']='all'
 		params['lists']='all'
 	if type=='lists':
-		type='boards/'+boardId+'/lists'
+		type='boards/'+BOARD_ID+'/lists'
 	if type=='cards':
-		type='boards/'+boardId+'/cards'
+		type='boards/'+BOARD_ID+'/cards'
 		params['customFieldItems']='true' # doesn't work in boards request
 	if type=='customFieldItems':
 		type='cards/'+id+'/customFieldItems'
@@ -70,7 +70,7 @@ def get(type,id=None,recursion=0):
 		return r.text
 
 listIdDict={}
-board=get('board',boardId)
+board=get('board',BOARD_ID)
 # _lists=get('lists')
 # cards=get('cards')
 _lists=[l for l in board['lists'] if not l['closed']] # exclude closed(archived) lists right off the bat
@@ -102,13 +102,19 @@ if boardPriorityFieldList: # the list will be empty if no priority field is defi
 				card['priority']=option['value']['text']
 		else:
 			card['priority']='Other'
-	
+
+# build a dict of members: key = member id; val - full member json
+memberDict=defaultdict(dict)
+for member in board['members']:
+	memberDict[member['id']]=member
+
+# now do the main iteration and report generation
 for _list in _lists:
 	idList=_list['id']
 	priorityDict=defaultdict(list)
 	for card in cards:
 		if card['idList']==idList:
-			priorityDict[card['priority']].append(card['name'])
+			priorityDict[card['priority']].append(card)
 			# print('   CARD: '+card['priority'][0]+' : '+card['name'])
 	rprint('\n'+_list['name']+' : '+str(sum(len(p) for p in priorityDict.values()))+' cards')
 	for priority in ['High','Medium','Low','Other']:
@@ -118,8 +124,18 @@ for _list in _lists:
 			if priority=='Other':
 				prefix='Other:'
 			rprint('  '+prefix+' '+str(count)+' cards')
-			for cardName in priorityDict[priority]:
-				rprint('    '+cardName)
+			for card in priorityDict[priority]:
+				# card creation timestamp is the first 8 hex characters of the ID
+				# https://support.atlassian.com/trello/docs/getting-the-time-a-card-or-board-was-created/
+				ts=int(card['id'][0:8],base=16)
+				ownerText=''
+				if card['idMembers']:
+					ownerText=' - '
+					for memberId in card['idMembers']:
+						if len(ownerText)>4:
+							ownerText+=', '
+						ownerText+=memberDict[memberId]['initials']
+				rprint('    '+card['name']+' ('+datetime.fromtimestamp(ts).strftime('%x')+ownerText+')')
 
 with open('out.txt','w') as outFile:
 	outFile.write(outString)
