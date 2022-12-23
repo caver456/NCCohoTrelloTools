@@ -108,16 +108,23 @@ memberDict=defaultdict(dict)
 for member in board['members']:
 	memberDict[member['id']]=member
 
+ownerCardDict=defaultdict(dict)
+
 # now do the main iteration and report generation
 for _list in _lists:
 	idList=_list['id']
+	listName=_list['name']
 	priorityDict=defaultdict(list)
 	for card in cards:
 		if card['idList']==idList:
 			priorityDict[card['priority']].append(card)
 			# print('   CARD: '+card['priority'][0]+' : '+card['name'])
-	rprint('\n'+_list['name']+' : '+str(sum(len(p) for p in priorityDict.values()))+' cards')
+	rprint('\n'+listName+' : '+str(sum(len(p) for p in priorityDict.values()))+' cards')
+	for memberId in memberDict.keys():
+		ownerCardDict[memberDict[memberId]['initials']][listName]=defaultdict(list)
 	for priority in ['High','Medium','Low','Other']:
+		# for memberId in memberDict.keys():
+		# 	ownerCardDict[memberId][idList][priority]=[]
 		count=len(priorityDict[priority])
 		if count>0: # don't print the priority line if there are no cards with that priority level
 			prefix=priority+' priority:'
@@ -135,10 +142,34 @@ for _list in _lists:
 						if len(ownerText)>4:
 							ownerText+=', '
 						ownerText+=memberDict[memberId]['initials']
-				rprint('    '+card['name']+' ('+datetime.fromtimestamp(ts).strftime('%x')+ownerText+')')
+				cardText=('    '+card['name']+' ('+datetime.fromtimestamp(ts).strftime('%x')+ownerText+')')
+				rprint(cardText)
+				for memberId in card['idMembers']:
+					ownerCardDict[memberDict[memberId]['initials']][listName][priority].append(cardText)
 
+# write the overall summary file
 with open('out.txt','w') as outFile:
 	outFile.write(outString)
+
+# print(json.dumps(ownerCardDict,indent=3))
+
+# write the individual summary files
+for initials in ownerCardDict.keys():
+	outString='NCCoHo Maintenance Report for '+initials+' - generated '+timeStr+'\n'
+	for (listName,priorityDict) in ownerCardDict[initials].items():
+		if listName not in ['Monitor','Complete']:
+			if len(priorityDict.items())>0:
+				outString+='\n'+listName+':\n'
+				for (priority,prioritizedCards) in priorityDict.items():
+					prefix=priority+' priority:'
+					if priority=='Other':
+						prefix='Other:'
+					for card in prioritizedCards:
+						outString+=card+'\n'
+	if not outString:
+		outString='Nothing to report for member '+initials
+	with open(initials+'_summary.txt','w') as outFile:
+		outFile.write(outString)
 
 # determining a card's priority:
 # - get the card's customFields json ['CCF']
