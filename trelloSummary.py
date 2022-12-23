@@ -12,6 +12,18 @@ API_KEY=os.getenv('TRELLO_API_KEY','')
 API_TOKEN=os.getenv('TRELLO_API_TOKEN', '')
 BOARD_ID=os.getenv('TRELLO_BOARD_ID','') # not really a secret, but seems better to not hardcode it
 
+activeLists=[
+	'Inbox',
+	'In-house labor - in progress',
+	'Contracted labor - in progress'
+]
+priorityList=[
+	'High',
+	'Medium',
+	'Low',
+	'Other'
+]
+
 apiUrlBase='https://api.trello.com/1/'
 
 outString=''
@@ -108,7 +120,8 @@ memberDict=defaultdict(dict)
 for member in board['members']:
 	memberDict[member['id']]=member
 
-ownerCardDict=defaultdict(dict)
+memberCardDict=defaultdict(dict)
+unownedCards=[]
 
 # now do the main iteration and report generation
 for _list in _lists:
@@ -121,10 +134,11 @@ for _list in _lists:
 			# print('   CARD: '+card['priority'][0]+' : '+card['name'])
 	rprint('\n'+listName+' : '+str(sum(len(p) for p in priorityDict.values()))+' cards')
 	for memberId in memberDict.keys():
-		ownerCardDict[memberDict[memberId]['initials']][listName]=defaultdict(list)
-	for priority in ['High','Medium','Low','Other']:
+		memberCardDict[memberDict[memberId]['initials']][listName]=defaultdict(list)
+	memberCardDict['UNASSIGNED'][listName]=defaultdict(list)
+	for priority in priorityList:
 		# for memberId in memberDict.keys():
-		# 	ownerCardDict[memberId][idList][priority]=[]
+		# 	memberCardDict[memberId][idList][priority]=[]
 		count=len(priorityDict[priority])
 		if count>0: # don't print the priority line if there are no cards with that priority level
 			prefix=priority+' priority:'
@@ -135,43 +149,57 @@ for _list in _lists:
 				# card creation timestamp is the first 8 hex characters of the ID
 				# https://support.atlassian.com/trello/docs/getting-the-time-a-card-or-board-was-created/
 				ts=int(card['id'][0:8],base=16)
-				ownerText=''
+				assigneeText=''
 				if card['idMembers']:
-					ownerText=' - '
+					assigneeText=' - '
 					for memberId in card['idMembers']:
-						if len(ownerText)>4:
-							ownerText+=', '
-						ownerText+=memberDict[memberId]['initials']
-				cardText=('    '+card['name']+' ('+datetime.fromtimestamp(ts).strftime('%x')+ownerText+')')
+						if len(assigneeText)>4:
+							assigneeText+=', '
+						assigneeText+=memberDict[memberId]['initials']
+				else:
+					unownedCards.append(card)
+				cardText=('    '+card['name']+' ('+datetime.fromtimestamp(ts).strftime('%x')+assigneeText+')')
 				rprint(cardText)
-				for memberId in card['idMembers']:
-					ownerCardDict[memberDict[memberId]['initials']][listName][priority].append(cardText)
+				if card['idMembers']:
+					for memberId in card['idMembers']:
+						memberCardDict[memberDict[memberId]['initials']][listName][priority].append(cardText)
+				else:
+					memberCardDict['UNASSIGNED'][listName][priority].append(cardText)
 
-# write the overall summary file
-with open('out.txt','w') as outFile:
-	outFile.write(outString)
 
-# print(json.dumps(ownerCardDict,indent=3))
+# print(json.dumps(memberCardDict,indent=3))
 
 # write the individual summary files
-for initials in ownerCardDict.keys():
-	outString='NCCoHo Maintenance Report for '+initials+' - generated '+timeStr+'\n'
-	for (listName,priorityDict) in ownerCardDict[initials].items():
-		if listName not in ['Monitor','Complete']:
+for initials in memberCardDict.keys():
+	header='NCCoHo Maintenance Report for '+initials+'\n generated '+timeStr+'\n'
+	memberOutString=''
+	count=0
+	for (listName,priorityDict) in memberCardDict[initials].items():
+		if listName in activeLists:
 			if len(priorityDict.items())>0:
-				outString+='\n'+listName+':\n'
-				for priority in ['High','Medium','Low','Other']:
+				memberOutString+='\n'+listName+':\n'
+				for priority in priorityList:
 					if priority in priorityDict.keys():
 						priorityString=priority+' priority:'
 						if priority=='Other':
 							priorityString='Other:'
-						outString+='  '+priorityString+'\n'
+						memberOutString+='  '+priorityString+'\n'
 						for card in priorityDict[priority]:
-							outString+=card+'\n'
-	if outString.count('\n')<2:
-		outString+='\nNothing to report for member '+initials
+							memberOutString+=card+'\n'
+							count+=1
+	if initials=='UNASSIGNED':
+		rprint('\nNumber of UNASSIGNED cards in active lists: '+str(count))
+		if count>0:
+			rprint(memberOutString)
+	memberOutString=header+memberOutString
+	if memberOutString.count('\n')<3:
+		memberOutString+='\nNothing to report for member '+initials
 	with open(initials+'_summary.txt','w') as outFile:
-		outFile.write(outString)
+		outFile.write(memberOutString)
+
+# write the overall summary file
+with open('out.txt','w') as outFile:
+	outFile.write(outString)
 
 # determining a card's priority:
 # - get the card's customFields json ['CCF']
