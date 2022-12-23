@@ -160,14 +160,16 @@ for initials in ownerCardDict.keys():
 		if listName not in ['Monitor','Complete']:
 			if len(priorityDict.items())>0:
 				outString+='\n'+listName+':\n'
-				for (priority,prioritizedCards) in priorityDict.items():
-					prefix=priority+' priority:'
-					if priority=='Other':
-						prefix='Other:'
-					for card in prioritizedCards:
-						outString+=card+'\n'
-	if not outString:
-		outString='Nothing to report for member '+initials
+				for priority in ['High','Medium','Low','Other']:
+					if priority in priorityDict.keys():
+						priorityString=priority+' priority:'
+						if priority=='Other':
+							priorityString='Other:'
+						outString+='  '+priorityString+'\n'
+						for card in priorityDict[priority]:
+							outString+=card+'\n'
+	if outString.count('\n')<2:
+		outString+='\nNothing to report for member '+initials
 	with open(initials+'_summary.txt','w') as outFile:
 		outFile.write(outString)
 
