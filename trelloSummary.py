@@ -54,6 +54,7 @@ def get(type,id=None,recursion=0):
 		params['members']='all'
 		params['labels']='all'
 		params['lists']='all'
+		params['actions']='all'
 	if type=='lists':
 		type='boards/'+BOARD_ID+'/lists'
 	if type=='cards':
@@ -124,6 +125,7 @@ memberCardDict=defaultdict(dict)
 unownedCards=[]
 
 # now do the main iteration and report generation
+rprint('\n-------------------------------------\nPart 1: Cards grouped by list then priority, with date and owner initials')
 for _list in _lists:
 	idList=_list['id']
 	listName=_list['name']
@@ -167,6 +169,37 @@ for _list in _lists:
 					memberCardDict['UNASSIGNED'][listName][priority].append(cardText)
 
 
+# could use Python 3.11 to get the valid fromisoformat, based on this note from
+#  
+#  https://docs.python.org/3/library/datetime.html
+#
+#  Changed in version 3.11: Previously, this method only supported formats that
+#   could be emitted by date.isoformat() or datetime.isoformat().
+#
+# or, could just look at the date portion of the iso format string
+
+now=datetime.now()
+actionsToReport=[]
+for action in board['actions']:
+	if action['type']=='updateCard':
+		date=action['date'][:10]
+		if (now-datetime.fromisoformat(date)).days<31:
+			data=action['data']
+			if 'listBefore' in data.keys() and 'listAfter' in data.keys():
+				before=data['listBefore']['name']
+				after=data['listAfter']['name']
+				name=data['card']['name']
+				actionsToReport.append({
+					'name':name,
+					'from':before,
+					'to':after,
+					'date':date
+				})
+
+rprint('\n-------------------------------------\nPart 2: Card movements in the last month\n')
+for action in actionsToReport:
+	rprint('  '+action['name']+' : '+action['from']+' --> '+action['to'])
+
 # print(json.dumps(memberCardDict,indent=3))
 
 # write the individual summary files
@@ -188,7 +221,8 @@ for initials in memberCardDict.keys():
 							memberOutString+=card+'\n'
 							count+=1
 	if initials=='UNASSIGNED':
-		rprint('\nNumber of UNASSIGNED cards in active lists: '+str(count))
+		rprint('\n-------------------------------------\nPart 3: UNASSIGNED cards in active lists\n')
+		rprint('  Number of UNASSIGNED cards in active lists: '+str(count))
 		if count>0:
 			rprint(memberOutString)
 	memberOutString=header+memberOutString
@@ -200,6 +234,56 @@ for initials in memberCardDict.keys():
 # write the overall summary file
 with open('out.txt','w') as outFile:
 	outFile.write(outString)
+
+# when a card is moved from one list to another, it will show up as a board action
+#  with type='updateCard'; relevant fields: date, data.listBefore, data.listAfter
+	#"actions": [
+    #   {
+    #      "id": "63a4f077b9ce9304db29cbe9",
+    #      "idMemberCreator": "5d3857304eeb305979e83eaa",
+    #      "data": {
+    #         "card": {
+    #            "idList": "5fecaa88b114b518459e4c4a",
+    #            "id": "639b3d7fd06a4501e4786d40",
+    #            "name": "booster pump Dec 2022",
+    #            "idShort": 128,
+    #            "shortLink": "FCF3w4gD"
+    #         },
+    #         "old": {
+    #            "idList": "5fecaa83563b4732cb3295ed"
+    #         },
+    #         "board": {
+    #            "id": "5fecaa2517be8365eb37fe77",
+    #            "name": "Current",
+    #            "shortLink": "9HJBLT8T"
+    #         },
+    #         "listBefore": {
+    #            "id": "5fecaa83563b4732cb3295ed",
+    #            "name": "Contracted labor - in progress"
+    #         },
+    #         "listAfter": {
+    #            "id": "5fecaa88b114b518459e4c4a",
+    #            "name": "Complete"
+    #         }
+    #      },
+    #      "appCreator": null,
+    #      "type": "updateCard",
+    #      "date": "2022-12-23T00:04:07.762Z",
+    #      "limits": null,
+    #      "memberCreator": {
+    #         "id": "5d3857304eeb305979e83eaa",
+    #         "activityBlocked": false,
+    #         "avatarHash": "126c27979ef691c88d8aecfd8b3d6ffb",
+    #         "avatarUrl": "https://trello-members.s3.amazonaws.com/5d3857304eeb305979e83eaa/126c27979ef691c88d8aecfd8b3d6ffb",
+    #         "fullName": "Tom Grundy",
+    #         "idMemberReferrer": null,
+    #         "initials": "TG",
+    #         "nonPublic": {},
+    #         "nonPublicAvailable": true,
+    #         "username": "tomgrundy4"
+    #      }
+    #   }
+	#]
 
 # determining a card's priority:
 # - get the card's customFields json ['CCF']
