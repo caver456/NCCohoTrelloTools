@@ -28,10 +28,16 @@ apiUrlBase='https://api.trello.com/1/'
 
 outString=''
 
+htmlString=''
+
 def rprint(text):
 	print(text)
 	global outString
 	outString+=text+'\n'
+
+def hprint(text):
+	global htmlString
+	htmlString+=text+'\n'
 
 if not API_KEY or not API_TOKEN:
 	rprint('ERROR: TRELLO_API_KEY and/or TRELLO_API_TOKEN are not defined as environment variables.  Aborting.')
@@ -134,7 +140,13 @@ for _list in _lists:
 		if card['idList']==idList:
 			priorityDict[card['priority']].append(card)
 			# print('   CARD: '+card['priority'][0]+' : '+card['name'])
-	rprint('\n'+listName+' : '+str(sum(len(p) for p in priorityDict.values()))+' cards')
+	count=sum(len(p) for p in priorityDict.values())
+	s=listName+' : '+str(count)+' cards'
+	rprint('\n'+s)
+	if count==0:
+		hprint('  <li>'+s)
+	else:
+		hprint('  <li><span class="caret">'+s+'</span>\n    <ul class="nested">')
 	for memberId in memberDict.keys():
 		memberCardDict[memberDict[memberId]['initials']][listName]=defaultdict(list)
 	memberCardDict['UNASSIGNED'][listName]=defaultdict(list)
@@ -146,7 +158,9 @@ for _list in _lists:
 			prefix=priority+' priority:'
 			if priority=='Other':
 				prefix='Other:'
-			rprint('  '+prefix+' '+str(count)+' cards')
+			s='  '+prefix+' '+str(count)+' cards'
+			rprint(s)
+			hprint('      <li><span class="caret">'+s+'</span>\n        <ul class="nested">')
 			for card in priorityDict[priority]:
 				# card creation timestamp is the first 8 hex characters of the ID
 				# https://support.atlassian.com/trello/docs/getting-the-time-a-card-or-board-was-created/
@@ -162,11 +176,14 @@ for _list in _lists:
 					unownedCards.append(card)
 				cardText=('    '+card['name']+' ('+datetime.fromtimestamp(ts).strftime('%x')+assigneeText+')')
 				rprint(cardText)
+				hprint('          <li>'+cardText+'</li>')
 				if card['idMembers']:
 					for memberId in card['idMembers']:
 						memberCardDict[memberDict[memberId]['initials']][listName][priority].append(cardText)
 				else:
 					memberCardDict['UNASSIGNED'][listName][priority].append(cardText)
+			hprint('        </ul>')
+	hprint('      </ul>')
 
 
 # could use Python 3.11 to get the valid fromisoformat, based on this note from
@@ -234,6 +251,14 @@ for initials in memberCardDict.keys():
 # write the overall summary file
 with open('out.txt','w') as outFile:
 	outFile.write(outString)
+
+with open('report_template.html','r') as htmlTemplate:
+	t=htmlTemplate.read()
+	t=t.replace('[TRELLO-SUMMARY-DATETIME]','<p>Report generated '+timeStr+'</p>')
+	t=t.replace('[TRELLO-SUMMARY-HTML]',htmlString)
+	# rprint('t:\n'+t)
+	with open('report.html','w') as htmlFile:
+		htmlFile.write(t)
 
 # when a card is moved from one list to another, it will show up as a board action
 #  with type='updateCard'; relevant fields: date, data.listBefore, data.listAfter
